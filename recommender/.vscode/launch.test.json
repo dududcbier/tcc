@@ -1,0 +1,30 @@
+{
+    "run": {
+        "default": "",
+        "items": [
+            {
+                "name": "procedure-template",
+                "projectName": "procedure-template",
+                "workingDirectory": "/Users/dududcbier/Downloads/neo4j-procedure-template-3.3",
+                "args": [],
+                "vmargs": [],
+                "env": {},
+                "preLaunchTask": ""
+            }
+        ]
+    },
+    "debug": {
+        "default": "",
+        "items": [
+            {
+                "name": "procedure-template",
+                "projectName": "procedure-template",
+                "workingDirectory": "/Users/dududcbier/Downloads/neo4j-procedure-template-3.3",
+                "args": [],
+                "vmargs": [],
+                "env": {},
+                "preLaunchTask": ""
+            }
+        ]
+    }
+}
