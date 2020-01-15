@@ -2,12 +2,15 @@ const dbConnector = require('./neo4jConnector.js')
 
 const getUserRatings = userId => {
     const session = dbConnector.getSession()
-    return session.run(`MATCH (u:User {movieLensId: ${userId}})-[r:RATES]->(m:Movie) RETURN id(r) AS r`).then(res => res.records.map(record => record.get('r')))
+    return session.run(
+        `MATCH (:User {movieLensId: ${userId}})-[r:RATES]->(:Movie) 
+        RETURN id(r) AS r`
+    ).then(res => res.records.map(record => record.get('r')))
 }
 
 const enableRating = ratingId => {
     const session = dbConnector.getSession()
-    return session.run(`MATCH (n)-[r:DISABLED_RATES]->(m) WHERE id(r) = ${ratingId}
+    return session.run(`MATCH (n:User)-[r:DISABLED_RATES]->(m:Movie) WHERE id(r) = ${ratingId}
     MERGE (n)-[new:RATES]->(m)
     SET new = r
     WITH r
@@ -16,7 +19,7 @@ const enableRating = ratingId => {
 
 const disableRating = ratingId => {
     const session = dbConnector.getSession()
-    return session.run(`MATCH (n)-[r:RATES]->(m) WHERE id(r) = ${ratingId}
+    return session.run(`MATCH (n:User)-[r:RATES]->(m:Movie) WHERE id(r) = ${ratingId}
     MERGE (n)-[new:DISABLED_RATES]->(m)
     SET new = r
     WITH r

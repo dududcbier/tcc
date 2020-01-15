@@ -18,7 +18,7 @@ const rules = {
     },
     threshold: {
       type: Number,
-      value: 0.5
+      value: 0.0
     }
 }
 

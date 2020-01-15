@@ -13,9 +13,9 @@ const rules = {
         type: Number,
         value: 100
 	},
-	k: {
+	populationPercentage: {
 		type: Number,
-		value: 10
+		value: 20
 	},
     skipRecommendations: {
         type: Boolean,
@@ -30,96 +30,124 @@ const rules = {
 	output: {
 		type: String,
 		value: `output_${new Date().valueOf()}`.txt
-	}
+    },
+    threshold: {
+        type: Number,
+        value: 0.5
+    },
+    k: {
+        type: Number,
+        value: 50
+    },
+    skipResetScenario: {
+        type: Boolean,
+        value: false
+    },
+    folds: {
+        type: Number,
+        value: 0
+    }
 }
 
 const scenarios = {
-	ratingsPercentage: [25],
-    n: [10, 25, 50],
+	ratingsPercentage: [20],
+    n: [25, 50, 100],
     steps: [3, 5]
 }
 
 const options = parser.parse(process.argv, { rules })
+const populationPercentage = options.parsed.populationPercentage
 const k = options.parsed.k
-
 const userRelationship = options.parsed.userRelationship
 const movieRelationship = options.parsed.movieRelationship
+const shouldResetScenario = !options.parsed.skipResetScenario
 
 const run = async () => {
     dbConnector.connect()
-    await clearTestScenario()
+    if (shouldResetScenario) await clearTestScenario()
+    else await clearRecommendations()
 	for (const ratingsPercentage of scenarios.ratingsPercentage) {
 		console.log('Setting up test scenario...')
-		await setupTest(k, ratingsPercentage)
-		for (const n of scenarios.n) {
-            for (const steps of scenarios.steps) {
-                console.log(`Running test scenario - ratingsPerc ${ratingsPercentage}, n ${n}, steps ${steps}`)
-                await runScenario(n, steps)
-                await clearRecommendations()
-                console.log('--------------------------------------------------------------------------------')
-            }
-		}
-		await clearTestScenario()
+        if (shouldResetScenario) await setupTest(populationPercentage, ratingsPercentage)
+        else console.log('SKIPPING RESET TEST SCENARIO')
+        const users = await getRecommendations(Math.max(...scenarios.n))
+        await evaluate(users, ratingsPercentage)
+        if (shouldResetScenario) await clearRecommendations()
+		if (shouldResetScenario) await clearTestScenario()
 	}
     dbConnector.disconnect()
 }
 
-let previousN = 0
-
-const runScenario = async (n, steps) => {
+const getRecommendations = async n => {
   	const users = await usersDb.getTestUsers().then(items => items.map(i => i.movieLensId))
 	console.log('Getting recommendations...')
-	progressBar.start(users.length * 4, 0)
+    progressBar.start(users.length * (2 + 2 * scenarios.steps.length), 0)
+    const count = {ub: 0, ib: 0}
 	for (const user of users) {
-        if (previousN !== n) {
-            await usersDb.getUserBasedRecommendations(user, n, userRelationship)
-            progressBar.increment()
-            await usersDb.getItemBasedRecommendations(user, n, movieRelationship)
-            progressBar.increment()
-        } else {
-            progressBar.increment(2)
-        }
-		await getRandomWalkRecommendations(user, options.parsed.walks, steps, n)
-		progressBar.increment()
-		await getRandomWalkRecommendations(user, options.parsed.walks, steps, n, true)
+        const ub = await usersDb.getUserBasedRecommendations(user, n, userRelationship, k)
         progressBar.increment()
+        const ib = await usersDb.getItemBasedRecommendations(user, n, movieRelationship, k)
+        progressBar.increment()
+        for (const steps of scenarios.steps) {
+            await getRandomWalkRecommendations(user, options.parsed.walks, steps, n)
+		    progressBar.increment()
+		    await getRandomWalkRecommendations(user, options.parsed.walks, steps, n, true)
+            progressBar.increment()
+        }
+        count.ub += ub
+        count.ib += ib
     }
-    previousN = n
-	progressBar.stop()
-	const recommendationTypes = ['UB', 'IB', 'RW', 'BRW']
-	for (const type of recommendationTypes) {
-		console.log(`${type}\t\t\t`)
-		console.log(`MAE\tP\tR\tF1`)
-		await calculateMAE(users, type)
-		await calculateF1(users, type)
-		console.log()
-	}
+    console.log(count)
+    progressBar.stop()
+    return users
+}
+
+const evaluate = async (users,ratingsPercentage) => {
+    let lastN = Math.max(scenarios.n)
+    const recommendationTypes = ['UB', 'IB']
+    for (const steps of scenarios.steps) {
+        recommendationTypes.push(`RW_${steps}`)
+        recommendationTypes.push(`BRW_${steps}`)
+    }
+    for (const n of scenarios.n.sort((a, b) => b - a)) {
+        console.log(`Evalutating test scenario - ratingsPerc ${ratingsPercentage}, n ${n}`)
+        if (lastN > n) await usersDb.eraseBottomRecommendations(n, recommendationTypes)
+        lastN = n
+        for (const type of recommendationTypes) {
+            console.log(`${type}\t\t\t`)
+            console.log(`MAE\tP\tR\tF1`)
+            await calculateMAE(users, type)
+            await calculateF1(users, type)
+            console.log()
+        }
+        console.log('--------------------------------------------------------------------------------')
+    }
 }
  
 const calculateMAE = async (testUsers, recSuffix) => {
-    if (recSuffix === 'RW' || recSuffix === 'BRW') return
-    const predictRating = recSuffix === 'UB' ? moviesDb.predictRatingUB :  moviesDb.predictRatingIB
-    const relationshipType = recSuffix === 'UB' ? userRelationship :  movieRelationship
+    if (recSuffix.startsWith('RW') || recSuffix.startsWith('BRW')) return
     let numerator = 0
     let denominator = 0
     for (const user of testUsers) {
-        const testSet = await moviesDb.getTestSet(user, recSuffix)
-        for (const item of testSet) {
-            if (!item.predictedScore) item.predictedScore = await predictRating(user, item, relationshipType)
-            numerator += Math.abs(Math.min(item.predictedScore, 5) - item.rating)
+        const hitSet = await moviesDb.getHitSet(user, recSuffix)
+        for (const item of hitSet) {
+            numerator += Math.abs(Math.max(Math.min(item.predictedScore, 5), 0) - item.rating)
         }
-        denominator += testSet.length
-	}
-	process.stdout.write(`${numerator/denominator}\t`);
+        denominator += hitSet.length
+    }
+    console.log({denominator})
+	process.stdout.write(`${Number.parseFloat(numerator/denominator).toFixed(4)}\t`);
 }
 
 const calculateF1 = async (testUsers, recSuffix) => {
     const results = []
+    let count = 0
     for (const user of testUsers) {
-        const info = await usersDb.getF1Info(user, recSuffix)
-        const precision = info.recset ? info.hits / info.recset : 0
-        const recall = info.hits / info.testset
+        const {tp, fp, fn} = await usersDb.getF1Info(user, recSuffix)
+        const precision = tp || fp ? tp / (tp + fp) : 0
+        const recall = tp || fn ? tp / (tp + fn) : 0
         const f1 = recall && precision ? 2 * precision * recall / (recall + precision) : 0
+        if ((!tp && !fn) || (!tp && !fp)) count += 1
         results.push({precision, recall, f1})
     }
     const resultsSum = results.reduce((sum, res) => {
@@ -127,16 +155,20 @@ const calculateF1 = async (testUsers, recSuffix) => {
         sum.recall += res.recall
         sum.f1 += res.f1
         return sum
-	}, {precision: 0, recall: 0, f1: 0})
-	if (recSuffix === 'RW' || recSuffix === 'BRW') process.stdout.write(`\t`)
-	process.stdout.write(`${resultsSum.precision/results.length}\t${resultsSum.recall/results.length}\t${resultsSum.f1/results.length}\n`);
+	}, {precision: 0, recall: 0, f1: 0, recset: 0, hits: 0, testset: 0})
+    if (recSuffix.startsWith('RW') || recSuffix.startsWith('BRW')) process.stdout.write(`\t`)
+    const length = testUsers.length - count
+	process.stdout.write(`${toPercentage(resultsSum.precision/length)}%\t${toPercentage(resultsSum.recall/length)}%\t${toPercentage(resultsSum.f1/length)}%\n`)
 }
+
+const toPercentage = n => Number.parseFloat(n * 100).toFixed(2)
 
 const getRandomWalkRecommendations = async (userId, walks, steps, n, biased) => {
     const recommendationCount = await Promise.all(
         [...Array(walks).keys()]
         .map(() => walk(userId, steps, biased, userId))
-    ).then(recommendations => recommendations
+    )
+    .then(recommendations => recommendations
         .filter(rec => !!rec)
         .map(rec => rec.movieLensId)
         .reduce((recommendations, movieId) => {
@@ -154,7 +186,7 @@ const getRandomWalkRecommendations = async (userId, walks, steps, n, biased) => 
     return session.run(
         `MATCH (m:Movie) WHERE m.movieLensId IN [${candidates.slice(0, n)}]
          MATCH (u:User) WHERE u.movieLensId = ${userId}
-         MERGE (u)-[:PROBABLY_LIKES_${biased ? 'B' : ''}RW]->(m)
+         MERGE (u)-[:PROBABLY_LIKES_${biased ? 'B' : ''}RW_${steps}]->(m)
     `)
 }
 
@@ -169,9 +201,10 @@ const walk = async (start, steps, biased, userId) => {
 
 const step = async (start, biased, userId) => {
     const startNodeType = isMovie(start) ? ':Movie' : ':User'
+    const similarityType = isMovie(start) ? movieRelationship : userRelationship
     const targetNodeType = userId ? ':Movie' : ''
-    const neighbors = await getNeighbors(start.movieLensId, startNodeType, targetNodeType, userId)
-    return pickRandomNeighbor(neighbors, biased)
+    const neighbors = await getNeighbors(start.movieLensId, startNodeType, targetNodeType, userId, similarityType)
+    return !neighbors.length && isMovie(start) ? start : pickRandomNeighbor(neighbors, biased)
 }
 
 const pickRandomNeighbor = (neighbors, biased) => {
@@ -188,16 +221,19 @@ const pickRandomNeighbor = (neighbors, biased) => {
 
 const isMovie = node => !!node.title
 
-const getNeighbors = (start, startNodeType, targetNodeType = '', userId) => {
+const getNeighbors = (start, startNodeType, targetNodeType = '', userId, similarityType) => {
     const session = dbConnector.getSession()
-    const extraRestriction = userId ? `AND NOT (start)-[:RATES]->(destination)` : ''
+    const extraRestriction = userId ? `AND NOT (:User {movieLensId: ${userId}})-[:RATES]->(destination)` : ''
     return session.run(
-        `MATCH (start${startNodeType})-[path:RATES|:PEARS_SIM|:COS_SIM]-(destination${targetNodeType}) 
+        `MATCH (start${startNodeType})-[path:RATES|${similarityType}]-(destination${targetNodeType}) 
         WHERE start.movieLensId = ${start} ${extraRestriction}
-        RETURN path, destination
+        RETURN 
+            CASE
+                WHEN path.similarity IS NOT NULL THEN path.similarity
+                ELSE path.rating / 5.0
+            END AS score, destination
     `)
-    .then(res => res.records.map(record => ({score: record.get('path').properties , destination: record.get('destination').properties})))
-    .then(neighbors => neighbors.map(neighbor => ({score: neighbor.score.similarity || neighbor.score.rating, destination: neighbor.destination })))
+    .then(res => res.records.map(record => ({score: record.get('score') , destination: record.get('destination').properties})))
 }
 
 const setupTest = async (populationPercentage, ratingsPercentage) => {
@@ -215,7 +251,24 @@ const setupTest = async (populationPercentage, ratingsPercentage) => {
         progressBar.increment()
     }
     progressBar.stop()
+    const movies = await getMovies()
+    await usersDb.clearSimilarities()
+    await calculateSimilarities(users, userRelationship === 'COS_SIM' ? usersDb.calculateAllCossineSimilarities : usersDb.calculateAllPearsonSimilarities)
+    await calculateSimilarities(movies, movieRelationship === 'COS_SIM' ? moviesDb.calculateAllCossineSimilarities : moviesDb.calculateAllPearsonSimilarities)
     await usersDb.calculateUsersAvgRating()
+    await moviesDb.calculateAvgRatings()
+}
+
+const getMovies = () => moviesDb.get().then(movies => movies.map(m => m.movieLensId))
+
+const calculateSimilarities = async (items, similarityFunction) => {
+    console.log('Calculating similarities...')
+    progressBar.start(items.length, 0)
+    await Promise.all(items.map(async itemId => {
+      await similarityFunction(itemId, options.parsed.threshold)
+      progressBar.increment()
+    }))
+    progressBar.stop()
 }
 
 const shuffle = array => {
@@ -244,12 +297,13 @@ const clearRecommendations = () => {
 	const session = dbConnector.getSession()
     return Promise.all([
 		session.run(`MATCH (n)-[r:PROBABLY_LIKES_IB]->(m) DELETE r`),
-		session.run(`MATCH (n)-[r:PROBABLY_LIKES_UB]->(m) DELETE r`),
-		session.run(`MATCH (n)-[r:PROBABLY_LIKES_RW]->(m) DELETE r`),
-		session.run(`MATCH (n)-[r:PROBABLY_LIKES_BRW]->(m) DELETE r`)
+        session.run(`MATCH (n)-[r:PROBABLY_LIKES_UB]->(m) DELETE r`),
+        ...scenarios.steps.map(steps => session.run(`MATCH (n)-[r:PROBABLY_LIKES_RW_${steps}]->(m) DELETE r`)),
+        ...scenarios.steps.map(steps => session.run(`MATCH (n)-[r:PROBABLY_LIKES_BRW_${steps}]->(m) DELETE r`))
 	])
 }
 
 if (!userRelationship || !movieRelationship) throw 'Missing relationship names!!!'
 if (userRelationship.startsWith(':') || movieRelationship.startsWith(':')) throw 'Invalid relationship names!!!'
 run()
+
