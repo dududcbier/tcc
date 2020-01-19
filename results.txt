@@ -1,0 +1,251 @@
+UB
+similarity> COS_SIM n> 100
+MAE	P	R	F1
+0.8251	3.55%	10.95%	4.45%
+
+similarity> COS_SIM n> 50
+MAE	P	R	F1
+0.8577	3.37%	5.77%	3.44%
+
+similarity> COS_SIM n> 25
+MAE	P	R	F1
+0.9352	3.38%	3.16%	2.61%
+
+similarity> PEARS_SIM n> 100
+MAE	P	R	F1
+0.7725	3.45%	13.61%	4.71%
+
+similarity> PEARS_SIM n> 50
+MAE	P	R	F1
+0.8037	3.22%	7.61%	3.70%
+
+similarity> PEARS_SIM n> 25
+MAE	P	R	F1
+0.8487	3.50%	4.63%	3.17%
+
+IB
+similarity> COS_SIM n> 100
+MAE	P	R	F1
+0.5951	7.05%	26.80%	8.92%
+
+similarity> COS_SIM n> 50
+MAE	P	R	F1
+0.5855	7.73%	20.70%	8.94%
+
+similarity> COS_SIM n> 25
+MAE	P	R	F1
+0.6056	7.93%	11.43%	7.02%
+
+similarity> PEARS_SIM n> 100
+MAE	P	R	F1
+0.5762	8.97%	17.24%	9.90%
+
+similarity> PEARS_SIM n> 50
+MAE	P	R	F1
+0.5744	9.05%	17.18%	9.95%
+
+similarity> PEARS_SIM n> 25
+MAE	P	R	F1
+0.5403	10.34%	14.32%	9.45%
+
+
+
+RW_3
+user> COS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.48%	17.20%	3.60%
+
+user> COS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.58%	9.71%	3.21%
+
+user> COS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.55%	4.80%	2.50%
+
+user> COS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.23%	14.09%	3.14%
+
+user> COS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.38%	8.56%	2.89%
+
+user> COS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.33%	4.38%	2.30%
+
+user> PEARS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.43%	16.61%	3.52%
+
+user> PEARS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.47%	9.31%	3.09%
+
+user> PEARS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.34%	4.29%	2.27%
+
+user> PEARS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.31%	15.54%	3.33%
+
+user> PEARS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.32%	8.47%	2.86%
+
+user> PEARS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.27%	4.10%	2.16%
+
+
+BRW_3
+user> COS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.33%	14.99%	3.28%
+
+user> COS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.30%	8.26%	2.80%
+
+user> COS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.44%	4.46%	2.35%
+
+user> COS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.36%	15.38%	3.35%
+
+user> COS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.39%	9.12%	2.98%
+
+user> COS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.48%	4.87%	2.47%
+
+user> PEARS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.42%	16.22%	3.43%
+
+user> PEARS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.41%	9.95%	2.99%
+
+user> PEARS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.44%	4.77%	2.38%
+
+user> PEARS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	2.34%	14.98%	3.28%
+
+user> PEARS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	2.35%	8.45%	2.88%
+
+user> PEARS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	2.32%	4.45%	2.25%
+
+
+RW_5
+user> COS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.90%	11.28%	2.70%
+
+user> COS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.96%	5.98%	2.34%
+
+user> COS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.93%	2.94%	1.82%
+
+user> COS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.93%	12.00%	2.73%
+
+user> COS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.85%	6.42%	2.22%
+
+user> COS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.91%	3.54%	1.79%
+
+user> PEARS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.93%	11.97%	2.71%
+
+user> PEARS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.84%	6.14%	2.15%
+
+user> PEARS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.88%	2.95%	1.69%
+
+user> PEARS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.89%	12.36%	2.70%
+
+user> PEARS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.97%	6.92%	2.38%
+
+user> PEARS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.98%	3.52%	1.90%
+
+
+BRW_5
+user> COS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.97%	10.56%	2.66%
+
+user> COS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.92%	6.62%	2.31%
+
+user> COS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.96%	3.52%	1.88%
+
+user> COS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.88%	9.80%	2.49%
+
+user> COS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.90%	5.70%	2.18%
+
+user> COS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.97%	2.84%	1.72%
+
+user> PEARS_SIM movie> COS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.89%	9.48%	2.52%
+
+user> PEARS_SIM movie> COS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.85%	5.85%	2.20%
+
+user> PEARS_SIM movie> COS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.85%	2.84%	1.69%
+
+user> PEARS_SIM movie> PEARS_SIM n> 100
+MAE	P	R	F1
+0.0000	1.93%	10.22%	2.56%
+
+user> PEARS_SIM movie> PEARS_SIM n> 50
+MAE	P	R	F1
+0.0000	1.91%	6.12%	2.23%
+
+user> PEARS_SIM movie> PEARS_SIM n> 25
+MAE	P	R	F1
+0.0000	1.86%	2.93%	1.67%
+

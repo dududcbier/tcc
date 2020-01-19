@@ -4,7 +4,6 @@ const dbConnector = require('./neo4jConnector.js')
 const moviesDb = require('./moviesDb.js')
 const usersDb = require('./usersDb.js')
 const ratingsDb = require('./ratingsDb.js')
-const fs = require('fs')
 
 const progressBar = new _cliProgress.SingleBar({}, _cliProgress.Presets.shades_classic);
 
@@ -52,41 +51,87 @@ const rules = {
 const scenarios = {
 	ratingsPercentage: [20],
     n: [25, 50, 100],
-    steps: [3, 5]
+    steps: [3, 5],
+    similarities: ['COS_SIM', 'PEARS_SIM']
 }
 
 const options = parser.parse(process.argv, { rules })
-const populationPercentage = options.parsed.populationPercentage
+const populationPercentage = options.parsed.folds ? 1 / options.parsed.folds : options.parsed.populationPercentage
 const k = options.parsed.k
-const userRelationship = options.parsed.userRelationship
-const movieRelationship = options.parsed.movieRelationship
+const userRelationships = options.parsed.userRelationship ? [options.parsed.userRelationship] : scenarios.similarities 
+const movieRelationships = options.parsed.movieRelationship ? [options.parsed.movieRelationship] : scenarios.similarities
 const shouldResetScenario = !options.parsed.skipResetScenario
+
+const recommendationTypes = ['UB', 'IB']
+for (const steps of scenarios.steps) {
+    recommendationTypes.push(`RW_${steps}`)
+    recommendationTypes.push(`BRW_${steps}`)
+}
+
+let userRelationship = null
+let movieRelationship = null
+let f = 0
+
+const results = {}
+for (const recType of recommendationTypes) {
+    results[recType] = {}
+}
 
 const run = async () => {
     dbConnector.connect()
     if (shouldResetScenario) await clearTestScenario()
     else await clearRecommendations()
 	for (const ratingsPercentage of scenarios.ratingsPercentage) {
-		console.log('Setting up test scenario...')
-        if (shouldResetScenario) await setupTest(populationPercentage, ratingsPercentage)
-        else console.log('SKIPPING RESET TEST SCENARIO')
-        const users = await getRecommendations(Math.max(...scenarios.n))
-        await evaluate(users, ratingsPercentage)
-        if (shouldResetScenario) await clearRecommendations()
-		if (shouldResetScenario) await clearTestScenario()
-	}
+        console.log('Setting up test scenario...')
+        const folds = await prepareFolds(populationPercentage)
+        f = 0
+        for (const testUsers of folds) {
+            if (shouldResetScenario) await setupTest(testUsers, ratingsPercentage)
+            else console.log('SKIPPING RESET TEST SCENARIO')
+            let skipUB = false
+            let skipIB = false
+            for (userRelationship of userRelationships) {
+                for (movieRelationship of movieRelationships) {
+                    await getRecommendations(testUsers, Math.max(...scenarios.n), skipUB, skipIB)
+                    await evaluate(testUsers, ratingsPercentage, skipUB, skipIB)
+                    if (shouldResetScenario) await clearRecommendations(skipUB, skipIB)
+                    skipUB = true
+                }
+                skipIB = true
+                skipUB = false
+            }
+            if (shouldResetScenario) await clearTestScenario()
+            f += 1
+        }
+        console.log('FINAL RESULTS')
+        for (const recType of recommendationTypes) {
+            console.log(`\n${recType}`)
+            for (const scenario of Object.keys(results[recType])) {
+                console.log(scenario)
+                console.log(`MAE\tP\tR\tF1`)
+                results[recType][scenario] = results[recType][scenario].reduce((sum, res) => {
+                    sum.mae += res.mae
+                    sum.recall += res.recall
+                    sum.precision += res.precision
+                    sum.f1 += res.f1
+                    return sum
+                }, {mae: 0, recall: 0, precision: 0, f1: 0})
+                if (results[recType][scenario].mae || results[recType][scenario].mae === 0) process.stdout.write(`${Number.parseFloat(results[recType][scenario].mae / f).toFixed(4)}\t`);
+                process.stdout.write(`${toPercentage(results[recType][scenario].precision / f)}%\t${toPercentage(results[recType][scenario].recall / f)}%\t${toPercentage(results[recType][scenario].f1 / f)}%\n`)
+            }
+
+        }
+    }
     dbConnector.disconnect()
 }
 
-const getRecommendations = async n => {
-  	const users = await usersDb.getTestUsers().then(items => items.map(i => i.movieLensId))
+const getRecommendations = async (users, n, skipUB, skipIB) => {
 	console.log('Getting recommendations...')
     progressBar.start(users.length * (2 + 2 * scenarios.steps.length), 0)
-    const count = {ub: 0, ib: 0}
 	for (const user of users) {
-        const ub = await usersDb.getUserBasedRecommendations(user, n, userRelationship, k)
+        if (!skipUB) await usersDb.getUserBasedRecommendations(user, n, userRelationship, k)
         progressBar.increment()
-        const ib = await usersDb.getItemBasedRecommendations(user, n, movieRelationship, k)
+        if (!skipIB) usersDb.getItemBasedRecommendations(user, n, movieRelationship, k)
         progressBar.increment()
         for (const steps of scenarios.steps) {
             await getRandomWalkRecommendations(user, options.parsed.walks, steps, n)
@@ -94,38 +139,42 @@ const getRecommendations = async n => {
 		    await getRandomWalkRecommendations(user, options.parsed.walks, steps, n, true)
             progressBar.increment()
         }
-        count.ub += ub
-        count.ib += ib
     }
-    console.log(count)
     progressBar.stop()
-    return users
 }
 
-const evaluate = async (users,ratingsPercentage) => {
+const evaluate = async (users, ratingsPercentage, skipUB, skipIB) => {
     let lastN = Math.max(scenarios.n)
-    const recommendationTypes = ['UB', 'IB']
-    for (const steps of scenarios.steps) {
-        recommendationTypes.push(`RW_${steps}`)
-        recommendationTypes.push(`BRW_${steps}`)
-    }
+    const filteredRecommendationTypes = recommendationTypes.filter(recType => (recType !== 'IB' || !skipIB) && (recType !== 'UB' || !skipUB))
     for (const n of scenarios.n.sort((a, b) => b - a)) {
-        console.log(`Evalutating test scenario - ratingsPerc ${ratingsPercentage}, n ${n}`)
-        if (lastN > n) await usersDb.eraseBottomRecommendations(n, recommendationTypes)
+        console.log(`Evaluating test scenario - ratingsPerc ${ratingsPercentage}, n ${n}, user similarity = ${userRelationship}, movie similarity = ${movieRelationship}`)
+        if (lastN > n) await usersDb.eraseBottomRecommendations(n, filteredRecommendationTypes)
         lastN = n
-        for (const type of recommendationTypes) {
-            console.log(`${type}\t\t\t`)
+        for (const type of filteredRecommendationTypes) {
+            console.log(`\n${type}\t\t\t`)
             console.log(`MAE\tP\tR\tF1`)
-            await calculateMAE(users, type)
-            await calculateF1(users, type)
-            console.log()
+            const mae = await calculateMAE(users, type)
+            const {precision, recall, f1} = await calculateF1(users, type)
+            const scenarioKey = getScenarioKey(type, userRelationship, movieRelationship, n)
+            if (!(scenarioKey in results[type])) results[type][scenarioKey] = []
+            results[type][scenarioKey].push({mae, precision, recall, f1})
+            if (mae || mae === 0) process.stdout.write(`${Number.parseFloat(mae).toFixed(4)}\t`);
+	        process.stdout.write(`${toPercentage(precision)}%\t${toPercentage(recall)}%\t${toPercentage(f1)}%\n`)
         }
         console.log('--------------------------------------------------------------------------------')
     }
 }
+
+const getScenarioKey = (type, userRelationship, movieRelationship, n) => {
+    switch(type) {
+        case 'UB': return `similarity> ${userRelationship} n> ${n}`
+        case 'IB': return `similarity> ${movieRelationship} n> ${n}`
+        default: return `user> ${userRelationship} movie> ${movieRelationship} n> ${n}`
+    }
+}
  
 const calculateMAE = async (testUsers, recSuffix) => {
-    if (recSuffix.startsWith('RW') || recSuffix.startsWith('BRW')) return
+    if (recSuffix.startsWith('RW') || recSuffix.startsWith('BRW')) return null
     let numerator = 0
     let denominator = 0
     for (const user of testUsers) {
@@ -135,30 +184,28 @@ const calculateMAE = async (testUsers, recSuffix) => {
         }
         denominator += hitSet.length
     }
-    console.log({denominator})
-	process.stdout.write(`${Number.parseFloat(numerator/denominator).toFixed(4)}\t`);
+    return numerator/denominator
 }
 
 const calculateF1 = async (testUsers, recSuffix) => {
-    const results = []
     let count = 0
-    for (const user of testUsers) {
+    const f1Info = await Promise.all(testUsers.map(async user => {
         const {tp, fp, fn} = await usersDb.getF1Info(user, recSuffix)
         const precision = tp || fp ? tp / (tp + fp) : 0
         const recall = tp || fn ? tp / (tp + fn) : 0
         const f1 = recall && precision ? 2 * precision * recall / (recall + precision) : 0
         if ((!tp && !fn) || (!tp && !fp)) count += 1
-        results.push({precision, recall, f1})
-    }
-    const resultsSum = results.reduce((sum, res) => {
+        return {precision, recall, f1}
+    }))
+    const resultsSum = f1Info.reduce((sum, res) => {
         sum.precision += res.precision
         sum.recall += res.recall
         sum.f1 += res.f1
         return sum
-	}, {precision: 0, recall: 0, f1: 0, recset: 0, hits: 0, testset: 0})
+    }, {precision: 0, recall: 0, f1: 0})
     if (recSuffix.startsWith('RW') || recSuffix.startsWith('BRW')) process.stdout.write(`\t`)
     const length = testUsers.length - count
-	process.stdout.write(`${toPercentage(resultsSum.precision/length)}%\t${toPercentage(resultsSum.recall/length)}%\t${toPercentage(resultsSum.f1/length)}%\n`)
+    return {precision: resultsSum.precision/length, recall: resultsSum.recall/length, f1: resultsSum.f1/length}
 }
 
 const toPercentage = n => Number.parseFloat(n * 100).toFixed(2)
@@ -236,11 +283,18 @@ const getNeighbors = (start, startNodeType, targetNodeType = '', userId, similar
     .then(res => res.records.map(record => ({score: record.get('score') , destination: record.get('destination').properties})))
 }
 
-const setupTest = async (populationPercentage, ratingsPercentage) => {
-    const users = await usersDb.get().then(items => items.map(i => i.movieLensId))
-    const n = parseInt(users.length * populationPercentage / 100)
+const prepareFolds = async (populationPercentage) => {
+    const users = await getUsers()
+    const n = parseInt(users.length * populationPercentage)
     shuffle(users)
-    const testUsers = users.slice(0, n)
+    const testUsers = [users.slice(0, n)]
+    for (let i = 1; i < options.parsed.folds; i++) {
+        testUsers.push(users.slice(i * n, (i + 1) * n))
+    }
+    return testUsers
+}
+
+const setupTest = async (testUsers, ratingsPercentage) => {
     progressBar.start(testUsers.length, 0)
     for (const user of testUsers) {
         const ratings = await ratingsDb.getUserRatings(user)
@@ -253,13 +307,20 @@ const setupTest = async (populationPercentage, ratingsPercentage) => {
     progressBar.stop()
     const movies = await getMovies()
     await usersDb.clearSimilarities()
-    await calculateSimilarities(users, userRelationship === 'COS_SIM' ? usersDb.calculateAllCossineSimilarities : usersDb.calculateAllPearsonSimilarities)
-    await calculateSimilarities(movies, movieRelationship === 'COS_SIM' ? moviesDb.calculateAllCossineSimilarities : moviesDb.calculateAllPearsonSimilarities)
+    const users = await getUsers()
+    for (userRelationship of userRelationships) {
+        await calculateSimilarities(users, userRelationship === 'COS_SIM' ? usersDb.calculateAllCossineSimilarities : usersDb.calculateAllPearsonSimilarities)
+    }
+    for (movieRelationship of movieRelationships) {
+        await calculateSimilarities(movies, movieRelationship === 'COS_SIM' ? moviesDb.calculateAllCossineSimilarities : moviesDb.calculateAllPearsonSimilarities)
+    }
     await usersDb.calculateUsersAvgRating()
     await moviesDb.calculateAvgRatings()
 }
 
 const getMovies = () => moviesDb.get().then(movies => movies.map(m => m.movieLensId))
+
+const getUsers = () => usersDb.get().then(users => users.map(i => i.movieLensId))
 
 const calculateSimilarities = async (items, similarityFunction) => {
     console.log('Calculating similarities...')
@@ -303,7 +364,5 @@ const clearRecommendations = () => {
 	])
 }
 
-if (!userRelationship || !movieRelationship) throw 'Missing relationship names!!!'
-if (userRelationship.startsWith(':') || movieRelationship.startsWith(':')) throw 'Invalid relationship names!!!'
 run()
 

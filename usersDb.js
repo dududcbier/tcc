@@ -111,7 +111,6 @@ const calculateAllCossineSimilarities = (movieLensId, similarityThreshold = -1) 
         MERGE (u)-[s:COS_SIM {similarity: similarity * weight}]->(v)
     `)
 }
-// Aparentemente esse é melhor mesmo
 const calculateAllPearsonSimilarities = (movieLensId, similarityThreshold = -1) => {
     const session = dbConnector.getSession()
     return session.run(`
@@ -127,24 +126,6 @@ const calculateAllPearsonSimilarities = (movieLensId, similarityThreshold = -1) 
         MERGE (u)-[:PEARS_SIM {similarity: similarity * weight}]->(v)
     `)
 }
-
-// const calculateAllPearsonSimilarities2 = (movieLensId, similarityThreshold = -1) => {
-//     const session = dbConnector.getSession()
-//     const q = `MATCH (u:User), (m:Movie)
-//     OPTIONAL MATCH (u)-[r:RATES]->(m)
-//     WITH {item: id(u), weights: collect(coalesce(r.rating, algo.NaN()))} as userData
-//     WITH collect(userData) as data
-//     CALL algo.similarity.pearson.stream(data, {similarityCutoff: ${similarityThreshold}})
-//     YIELD item1, item2, count1, count2, similarity
-//     WITH algo.asNode(item1) AS u, algo.asNode(item2) AS v, similarity
-//     MATCH (u:User)-[:RATES]->(m:Movie)<-[:RATES]-(v:User)
-//     WITH u, v, similarity, count(m) as inCommon
-//     WITH u, v, similarity, CASE WHEN inCommon >= 25 THEN 1 ELSE inCommon / 25.0 END AS weight
-//     WHERE abs(similarity * weight) > ${similarityThreshold}
-//     MERGE (u)-[:PEARS_SIM {similarity: similarity * weight}]->(v)`
-//     console.log(q)
-//     return session.run(q)
-// }
 
 const clearSimilarities = () => {
     const session = dbConnector.getSession()
@@ -188,6 +169,5 @@ module.exports = {
     calculateAllCossineSimilarities,
     calculateUsersAvgRating,
     clearSimilarities,
-    // calculateAllPearsonSimilarities2,
     eraseBottomRecommendations
 }
