@@ -128,11 +128,11 @@ const run = async () => {
 const getRecommendations = async (users, n, skipUB, skipIB) => {
 	console.log('Getting recommendations...')
     progressBar.start(users.length * (2 + 2 * scenarios.steps.length), 0)
+    if (!skipUB) await usersDb.getUserBasedRecommendations(users, n, userRelationship, k)
+    progressBar.increment(users.length)
+    if (!skipIB) await usersDb.getItemBasedRecommendations(users, n, movieRelationship, k)
+    progressBar.increment(users.length)
 	for (const user of users) {
-        if (!skipUB) await usersDb.getUserBasedRecommendations(user, n, userRelationship, k)
-        progressBar.increment()
-        if (!skipIB) usersDb.getItemBasedRecommendations(user, n, movieRelationship, k)
-        progressBar.increment()
         for (const steps of scenarios.steps) {
             await getRandomWalkRecommendations(user, options.parsed.walks, steps, n)
 		    progressBar.increment()
@@ -256,7 +256,7 @@ const step = async (start, biased, userId) => {
 
 const pickRandomNeighbor = (neighbors, biased) => {
     if (neighbors.length === 0) return null
-    const maxRand = biased ? neighbors.reduce((sum, neighbor) => sum + neighbor.score, 0) : neighbors.length
+    const maxRand = biased ? neighbors.reduce((sum, neighbor) => sum + Math.abs(neighbor.score), 0) : neighbors.length
     const rand = Math.random() * maxRand
     if (!biased) return neighbors[Math.floor(rand)].destination
     let sum = 0

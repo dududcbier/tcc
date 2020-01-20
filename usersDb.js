@@ -21,33 +21,39 @@ const calculateUsersAvgRating = () => {
     `)
 }
 
-const getUserBasedRecommendations = async (userId, n, userRelationship, k) => {
+const getUserBasedRecommendations = async (userIds, n, userRelationship, k) => {
     const session = dbConnector.getSession()     
     return session.run(`
-    MATCH (u:User {movieLensId: ${userId}})-[sim:${userRelationship}]-(v:User)-[r:RATES]->(m:Movie)
-    WHERE NOT (u)-[:RATES]->(m)
+    MATCH (u:User)-[sim:${userRelationship}]-(v:User)-[r:RATES]->(m:Movie)
+    WHERE NOT (u)-[:RATES]->(m) AND u.movieLensId IN [${userIds}]
     WITH u, v, m, sim, r
-    ORDER BY id(m), sim.similarity DESC
+    ORDER BY sim.similarity DESC
     WITH u, m, collect({normalizedRating: r.rating - v.avgRating, similarity: sim.similarity})[..${k}] as similarUsers
     WITH u, m, u.avgRating + reduce(num = 0, v in similarUsers | num + v.similarity * v.normalizedRating) / reduce(den = 0, v in similarUsers | den + abs(v.similarity)) as score
     ORDER BY score DESC
-    LIMIT ${n}
-    MERGE (u)-[r:PROBABLY_LIKES_UB {score: score}]->(m)
+    WITH u, collect({m: m.movieLensId, score: score})[..${n}] as recommendations
+    UNWIND recommendations as rec
+    MATCH (m:Movie {movieLensId: rec.m})
+    MERGE (u)-[r:PROBABLY_LIKES_UB {score: rec.score}]->(m)
     RETURN count(r) AS count`)
     .then(res => res.records[0].get('count'))
 }
 
-const getItemBasedRecommendations = (userId, n, movieRelationship, k) => {
+const getItemBasedRecommendations = (userIds, n, movieRelationship, k) => {
     const session = dbConnector.getSession() 
-    return session.run(`MATCH (u:User {movieLensId: ${userId}})-[r:RATES]->(m:Movie)-[sim:${movieRelationship}]-(similarMovies:Movie) WHERE NOT (u)-[:RATES]->(similarMovies)
+    return session.run(`
+    MATCH (u:User)-[r:RATES]->(m:Movie)-[sim:${movieRelationship}]-(similarMovies:Movie) 
+    WHERE NOT (u)-[:RATES]->(similarMovies) AND u.movieLensId IN [${userIds}]
     WITH u, similarMovies, r, sim
-    ORDER BY id(similarMovies), sim.similarity DESC
+    ORDER BY sim.similarity DESC
     WITH u, similarMovies, collect({rating: r.rating, similarity: sim.similarity})[..${k}] as ratings
     WITH u, similarMovies, reduce(num = 0, rating in ratings | num + rating.similarity * rating.rating) as num, reduce(den = 0, rating in ratings | den + abs(rating.similarity)) as den
     WITH u, similarMovies, num / den as score
     ORDER BY score DESC
-    LIMIT ${n}
-    MERGE (u)-[r:PROBABLY_LIKES_IB {score: score}]->(similarMovies)
+    WITH u, collect({m: similarMovies.movieLensId, score: score})[..${n}] as recommendations
+    UNWIND recommendations as rec
+    MATCH (m:Movie {movieLensId: rec.m})
+    MERGE (u)-[r:PROBABLY_LIKES_IB {score: rec.score}]->(m)
     RETURN count(r) AS count`)
     .then(res => res.records[0].get('count'))
 }
