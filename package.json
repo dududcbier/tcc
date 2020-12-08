@@ -13,7 +13,7 @@
     "big-json": "^3.0.0",
     "cli-progress": "^3.3.1",
     "csvtojson": "^2.0.10",
-    "fast-csv": "^3.4.0",
+    "fast-csv": "^4.3.6",
     "neo4j-driver": "^1.7.6"
   },
   "devDependencies": {
